@@ -1,4 +1,6 @@
-from pdprocess import PDProcess
+__all__ = ['LindbladUnraveling']
+
+from .pdprocess import PDProcess
 
 import numpy as np
 import qutip as qt
@@ -20,7 +22,7 @@ class LindbladUnraveling(PDProcess):
         self._zipped_data = [(g, (L.dag() * L).full())
                              for g, L in zip(rates, lindblad_ops)]
         self._H_eff = (hamiltonian.full() -
-                       0.5j * sum(g * LdL for g, LdL in self.data))
+                       0.5j * sum(g * LdL for g, LdL in self._zipped_data))
         
         # need the dimensions of a state in the space H acts on
         # best I can come up with is this:
