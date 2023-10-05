@@ -17,7 +17,7 @@ class PDTrajectoryResult(qt.Result):
 
 class PDPIntegrator(Integrator):
     integrator_options = {
-        'scipy_method': 'LSODA',
+        'scipy_method': 'RK45',
         'first_step': None,
         'max_step': np.inf,
         'min_step': 0,
@@ -56,7 +56,7 @@ class PDPIntegrator(Integrator):
     def get_state(self, copy: bool = False) -> NDArray:
         result = self._current_state[:-1]
         if copy:
-            return self._current_time, np.array(result)
+            return self._current_time, np.copy(result)
         else:
             return self._current_time, result
     
@@ -84,19 +84,18 @@ class PDPIntegrator(Integrator):
         
         if integration_result.status == 0: # no jump
             final_time = integration_result.t[-1]
-            final_state = np.transpose(integration_result.y)[0, :-1]
+            final_state = np.transpose(integration_result.y)[0, :]
             return None, final_time, final_state
         else:
             jump_time = integration_result.t_events[0][0]
-            jump_state = integration_result.y_events[0][0][:-1]
+            jump_state = integration_result.y_events[0][0]
 
             weights = self.system.jump_rates(jump_time, jump_state)
             probs = weights / sum(weights)
             jump_channel = self._generator.choice(len(weights), p=probs)
 
-            final_state = self.system.apply_jump(
-                jump_time, jump_channel, jump_state)
-            return jump_channel, jump_time, final_state
+            self.system.apply_jump(jump_time, jump_channel, jump_state[:-1])
+            return jump_channel, jump_time, jump_state
 
     def integrate(
             self, time: float, copy: bool = False) -> tuple[float, NDArray]:
@@ -104,6 +103,7 @@ class PDPIntegrator(Integrator):
             jump_channel, final_time, final_state =\
                 self._integration_step(time)
             self._current_time = final_time
+            final_state[-1] = 0
             self._current_state = final_state
             if jump_channel is None:
                 break
@@ -160,7 +160,7 @@ class PDPSolver(qt.MultiTrajSolver):
                       e_ops: list[Any]) -> tuple[np.random.SeedSequence,
                                                  qt.Result]:
         seed, result = super()._run_one_traj(seed, state, tlist, e_ops)
-        result.collapse = self._integrator.collapses
+        result.collapse = self._integrator._collapses
         return seed, result
 
     def _argument(self, args: Any):
