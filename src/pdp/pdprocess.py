@@ -1,105 +1,64 @@
-__all__ = ['PDProcess', 'PDTrajectoryResult', 'PDPIntegrator', 'PDPSolver']
+__all__ = ['PDTrajectoryResult', 'PDPIntegrator', 'PDPSolver']
 
-from abc import ABC, abstractmethod
+from .processes import PDProcess
 
 import numpy as np
 from scipy.integrate import solve_ivp
 import qutip as qt
+from qutip.solver.integrator import Integrator
 
 from typing import Any, Optional
 from numpy.typing import NDArray
-
-class PDProcess(ABC):
-    """
-    Specification of system undergoing piecewise deterministic process with
-    Poisson increments, i.e. dX = L(X) dt + sum_a[ (J_a(X) - X) dN_a ].
-    """
-
-    @abstractmethod
-    def initial_state_to_array(self, state: Any) -> NDArray:
-        """
-        The state X must be represented as a numpy array, but may also have a
-        different external representation (e.g. `QObj`).
-        This method takes an initial state `state` in the external
-        representation and returns the corresponding numpy array.
-        """
-        pass
-
-    @abstractmethod
-    def array_to_state(self, state: NDArray) -> Any:
-        """
-        Converts the given state to the external representation.
-        """
-        pass
-
-    @abstractmethod
-    def expect(self, state: NDArray, observable: Any) -> complex:
-        """
-        Expectation value of the given observable in the given state.
-        """
-        pass
-    
-    @abstractmethod
-    def jump_rates(self, time: float, state: NDArray) -> list[float]:
-        """
-        Returns a list of jump rates, that is, the expectation values of the
-        increments dN_a at the current time conditioned on the current state
-        """
-        pass
-
-    @abstractmethod
-    def apply_jump(self, time: float, channel: int, state: NDArray) -> None:
-        """
-        Applies J_a to the given state, where a is specified by `channel`.
-        The array representing the state is updated in-place; this method
-        returns nothing.
-        """
-        pass
-
-    @abstractmethod
-    def deterministic_generator(
-        self, time: float, state: NDArray, result: NDArray) -> None:
-        """
-        Computes L(X), where X is the current state (`state` argument).
-        The result is returned in the numpy array `result`; this method
-        returns nothing.
-        """
-        pass
-
-    @abstractmethod
-    def _argument(self, args: Any) -> None:
-        pass
 
 
 class PDTrajectoryResult(qt.Result):
     pass #TODO
 
 
-class PDPIntegrator:
-    def __init__(self, system: PDProcess, options: dict):
-        self.system = system
-        self.options = options
+class PDPIntegrator(Integrator):
+    integrator_options = {
+        'scipy_method': 'LSODA',
+        'first_step': None,
+        'max_step': np.inf,
+        'min_step': 0,
+        'rtol': 1e-3,
+        'atol': 1e-6,
+    }
 
-        self._is_set = False
+    support_time_dependant = True  # spelling like in parent class :(
+    supports_blackbox = False
+    name = "PDP Integrator"
+
+    def __init__(self, system: PDProcess, options: dict):
         self._current_time: Optional[float] = None
         self._current_state: Optional[NDArray] = None
         self._collapses: Optional[list[tuple[float, int]]] = None
         self._generator: Optional[np.random.Generator] = None
+        
+        super().__init__(system, options)
 
+    def _prepare(self):
+        self._collapses = []
+
+    # Made generator optional to agree with parent class contract
     def set_state(self, time: float, state: NDArray,
-                  generator: np.random.Generator) -> None:
+                  generator: Optional[np.random.Generator] = None) -> None:
         self._current_time = time
         self._current_state = np.append(state, 0)
-        self._collapses = []
-        self._generator = generator
+
+        if generator is not None:
+            self._generator = generator
+        elif self._generator is None:
+            self._generator = np.random.default_rng()
+
         self._is_set = True
     
-    def get_state(self, copy: bool = True) -> NDArray:
+    def get_state(self, copy: bool = False) -> NDArray:
         result = self._current_state[:-1]
         if copy:
-            return np.array(result)
+            return self._current_time, np.array(result)
         else:
-            return result
+            return self._current_time, result
     
     def _rhs(self, time: float, state: NDArray) -> NDArray:
         result = np.zeros_like(state)
@@ -117,7 +76,11 @@ class PDPIntegrator:
 
         integration_result = solve_ivp(
             self._rhs, (self._current_time, max_time), self._current_state,
-            method=self.options['method'], t_eval=[max_time], events=[event])
+            method=self.options['scipy_method'], t_eval=[max_time],
+            events=[event], first_step=self.options['first_step'],
+            max_step=self.options['max_step'],
+            min_step=self.options['min_step'],
+            rtol=self.options['rtol'], atol=self.options['atol'])
         
         if integration_result.status == 0: # no jump
             final_time = integration_result.t[-1]
@@ -137,20 +100,27 @@ class PDPIntegrator:
 
     def integrate(
             self, time: float, copy: bool = False) -> tuple[float, NDArray]:
-        # TODO: Copy parameter not supported
         while True:
             jump_channel, final_time, final_state =\
                 self._integration_step(time)
             self._current_time = final_time
             self._current_state = final_state
             if jump_channel is None:
-                return final_time, final_state
+                break
             else:
                 self._collapses.append((final_time, jump_channel))
+        return self.get_state(copy=copy)
 
     @property
-    def integrator_options(self):
-        return {} # TODO
+    def options(self):
+        """PDP Integrator options are `scipy_method`, `first_step`, `min_step`,
+        `max_step`, `rtol` and `atol` as documented in
+        `scipy.integrate.solve_ivp`."""
+        return super().options
+
+    @options.setter
+    def options(self, new_options):
+        Integrator.options.fset(self, new_options)
 
 class PDPSolver(qt.MultiTrajSolver):
     """
@@ -159,20 +129,16 @@ class PDPSolver(qt.MultiTrajSolver):
     """
     name = "PDP Solver"
     trajectory_resultclass = PDTrajectoryResult
+    _avail_integrators = {}
 
-    # The `method` option will be passed on to scipy's `solve_ivp`.
-    # We do not support alternative integrator classes specified by `method`.
     solver_options = {
         **qt.MultiTrajSolver.solver_options,
-        'method': 'LSODA',
+        'method': 'PDP',
     }
 
     def __init__(self, system: PDProcess, *, options: Optional[dict] = None):
         self.system = system
-        super().__init__(rhs=None, options=options)
-
-    def _get_integrator(self):
-        raise NotImplementedError #TODO
+        super().__init__(rhs=system, options=options)
         
     def _initialize_stats(self):
         stats = super()._initialize_stats()
@@ -199,13 +165,10 @@ class PDPSolver(qt.MultiTrajSolver):
 
     def _argument(self, args: Any):
         if args is not None:
-            self.system._argument(args)
-
-    def _get_integrator(self):
-        return PDPIntegrator(self.system, self.options)
+            self.system.arguments(args)
     
-    def _apply_options(self, _):
-        # _apply_options in the base Solver re-initializes integrator if
-        # `method` is changed. We don't need that here since there is only
-        # one integrator class
-        self._integrator.options = self.options
+    @classmethod
+    def avail_integrators(cls):
+        return cls._avail_integrators
+
+PDPSolver.add_integrator(PDPIntegrator, 'PDP')
