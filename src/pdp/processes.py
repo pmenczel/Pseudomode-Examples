@@ -114,7 +114,7 @@ class LindbladUnraveling(PDProcess):
     def deterministic_generator(
         self, time: float, state: NDArray, result: NDArray) -> None:
         alpha = sum(self.jump_rates(time, state)) / 2
-        return (-1j * self._H_eff @ state) + (alpha * state)
+        result[:] = (-1j * self._H_eff @ state) + (alpha * state)
 
     def arguments(self, args: Any) -> None:
         pass

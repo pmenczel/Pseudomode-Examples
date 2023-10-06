@@ -6,13 +6,23 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import qutip as qt
 from qutip.solver.integrator import Integrator
+from qutip.solver.multitraj import MultiTrajSolver
 
 from typing import Any, Optional
 from numpy.typing import NDArray
 
 
 class PDTrajectoryResult(qt.Result):
-    pass #TODO
+    pass # TODO: store collapses (modify tests to make sure they are stored)
+    # Also:
+    # Possibly calculate expectation values here based on system.expect instead
+    # of using system.array_to_state.
+    # However multitrajsolver applies restore_state before passing something
+    # into the result object, so array_to_state is already applied.
+    # In order to change that, we'd have to make things more complicated,
+    # which might not be worth it.
+    # (The gain would be not having to do array_to_state if store_states is set
+    # to false, which might be more expensive than direct `expect` calls)
 
 
 class PDPIntegrator(Integrator):
@@ -110,6 +120,9 @@ class PDPIntegrator(Integrator):
             else:
                 self._collapses.append((final_time, jump_channel))
         return self.get_state(copy=copy)
+    
+    # TODO override run efficiently and also override integrate_one_trajectory
+    # in the solver to use run?
 
     @property
     def options(self):
@@ -122,7 +135,7 @@ class PDPIntegrator(Integrator):
     def options(self, new_options):
         Integrator.options.fset(self, new_options)
 
-class PDPSolver(qt.MultiTrajSolver):
+class PDPSolver(MultiTrajSolver):
     """
     Monte-Carlo simulation for piecewise deterministic process specified as
     a `PDProcess` object.
@@ -132,7 +145,7 @@ class PDPSolver(qt.MultiTrajSolver):
     _avail_integrators = {}
 
     solver_options = {
-        **qt.MultiTrajSolver.solver_options,
+        **MultiTrajSolver.solver_options,
         'method': 'PDP',
     }
 
