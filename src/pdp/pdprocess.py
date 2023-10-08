@@ -1,12 +1,12 @@
 __all__ = ['PDTrajectoryResult', 'PDPIntegrator', 'PDPSolver']
 
 from .processes import PDProcess
+from .multitraj_patch import EnhancedMultiTrajSolver
 
 import numpy as np
 from scipy.integrate import solve_ivp
 import qutip as qt
 from qutip.solver.integrator import Integrator
-from qutip.solver.multitraj import MultiTrajSolver
 
 from typing import Any, Optional
 from numpy.typing import NDArray
@@ -135,7 +135,7 @@ class PDPIntegrator(Integrator):
     def options(self, new_options):
         Integrator.options.fset(self, new_options)
 
-class PDPSolver(MultiTrajSolver):
+class PDPSolver(EnhancedMultiTrajSolver):
     """
     Monte-Carlo simulation for piecewise deterministic process specified as
     a `PDProcess` object.
@@ -145,7 +145,7 @@ class PDPSolver(MultiTrajSolver):
     _avail_integrators = {}
 
     solver_options = {
-        **MultiTrajSolver.solver_options,
+        **EnhancedMultiTrajSolver.solver_options,
         'method': 'PDP',
     }
 
