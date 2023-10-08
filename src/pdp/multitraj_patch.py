@@ -1,4 +1,6 @@
-__all__ = ['InitialStateGenerator', 'EnhancedMultiTrajResult', 'EnhancedMultiTrajSolver']
+__all__ = ['InitialStateGenerator',
+           'EnhancedMultiTrajResult',
+           'EnhancedMultiTrajSolver']
 
 from qutip.solver.multitraj import MultiTrajSolver, _get_map
 

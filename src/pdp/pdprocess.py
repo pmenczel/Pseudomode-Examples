@@ -8,7 +8,7 @@ from scipy.integrate import solve_ivp
 import qutip as qt
 from qutip.solver.integrator import Integrator
 
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 from numpy.typing import NDArray
 
 
@@ -63,7 +63,7 @@ class PDPIntegrator(Integrator):
 
         self._is_set = True
     
-    def get_state(self, copy: bool = False) -> NDArray:
+    def get_state(self, copy: bool = False) -> tuple[float, NDArray]:
         result = self._current_state[:-1]
         if copy:
             return self._current_time, np.copy(result)
@@ -77,7 +77,8 @@ class PDPIntegrator(Integrator):
         return result
     
     def _integration_step(
-            self, max_time: float) -> tuple[Optional[int], float, NDArray]:
+            self, times: list[float]
+            ) -> tuple[Optional[int], float, NDArray, list[NDArray]]:
         minus_log_lambda = -np.log(self._generator.random())
         def event(t, state):
             return np.real(state[-1]) - minus_log_lambda
@@ -85,17 +86,22 @@ class PDPIntegrator(Integrator):
         event.direction = 1
 
         integration_result = solve_ivp(
-            self._rhs, (self._current_time, max_time), self._current_state,
-            method=self.options['scipy_method'], t_eval=[max_time],
+            self._rhs, (self._current_time, times[-1]), self._current_state,
+            method=self.options['scipy_method'], t_eval=times,
             events=[event], first_step=self.options['first_step'],
             max_step=self.options['max_step'],
             min_step=self.options['min_step'],
             rtol=self.options['rtol'], atol=self.options['atol'])
         
+        if len(integration_result.y) == 0:
+            states = []
+        else:
+            states = np.transpose(integration_result.y)
+        
         if integration_result.status == 0: # no jump
             final_time = integration_result.t[-1]
-            final_state = np.transpose(integration_result.y)[0, :]
-            return None, final_time, final_state
+            final_state = states[-1]
+            return None, final_time, final_state, states
         else:
             jump_time = integration_result.t_events[0][0]
             jump_state = integration_result.y_events[0][0]
@@ -105,13 +111,13 @@ class PDPIntegrator(Integrator):
             jump_channel = self._generator.choice(len(weights), p=probs)
 
             self.system.apply_jump(jump_time, jump_channel, jump_state[:-1])
-            return jump_channel, jump_time, jump_state
+            return jump_channel, jump_time, jump_state, states
 
     def integrate(
             self, time: float, copy: bool = False) -> tuple[float, NDArray]:
         while True:
-            jump_channel, final_time, final_state =\
-                self._integration_step(time)
+            jump_channel, final_time, final_state, _ =\
+                self._integration_step([time])
             self._current_time = final_time
             final_state[-1] = 0
             self._current_state = final_state
@@ -121,8 +127,24 @@ class PDPIntegrator(Integrator):
                 self._collapses.append((final_time, jump_channel))
         return self.get_state(copy=copy)
     
-    # TODO override run efficiently and also override integrate_one_trajectory
-    # in the solver to use run?
+    def run(self, tlist: list[float]) -> Iterable[tuple[float, NDArray]]:
+        tlist = tlist[1:]
+        while True:
+            jump_channel, final_time, final_state, states =\
+                self._integration_step(tlist)
+            self._current_time = final_time
+            final_state[-1] = 0
+            self._current_state = final_state
+            
+            num_states = len(states)
+            yield from zip(tlist[:num_states], states[:, :-1])
+            tlist = tlist[num_states:]
+            
+            if jump_channel is None:
+                break
+            else:
+                self._collapses.append((final_time, jump_channel))
+            
 
     @property
     def options(self):
@@ -170,8 +192,7 @@ class PDPSolver(EnhancedMultiTrajSolver):
     
     def _run_one_traj(self, seed: np.random.SeedSequence,
                       state: NDArray, tlist: list[float],
-                      e_ops: list[Any]) -> tuple[np.random.SeedSequence,
-                                                 qt.Result]:
+                      e_ops: Any) -> tuple[np.random.SeedSequence, qt.Result]:
         seed, result = super()._run_one_traj(seed, state, tlist, e_ops)
         result.collapse = self._integrator._collapses
         return seed, result
