@@ -20,9 +20,10 @@ def test_constevo_startstep(constant_solver: PDPSolver) -> None:
     final_state = constant_solver.step(1)
     assert (final_state - initial_state).norm() < EPSI
 
-def test_constevo_serial(constant_solver: PDPSolver) -> None:
+@pytest.mark.parametrize('map', ['serial', 'parallel'])
+def test_constevo_finalstate(constant_solver: PDPSolver, map: str) -> None:
     initial_state = qt.basis(2, 0)
-    options = {'map': 'serial',
+    options = {'map': map,
                'keep_runs_results': True,
                'store_final_state': True,
                'store_states': False}
@@ -37,9 +38,10 @@ def test_constevo_serial(constant_solver: PDPSolver) -> None:
         assert len(traj.collapse) == 0
         assert (traj.final_state - initial_state).norm() < EPSI
 
-def test_constevo_parallel(constant_solver: PDPSolver) -> None:
+@pytest.mark.parametrize('map', ['serial', 'parallel'])
+def test_constevo_states(constant_solver: PDPSolver, map: str) -> None:
     initial_state = qt.basis(2, 0)
-    options = {'map': 'parallel',
+    options = {'map': map,
                'keep_runs_results': False,
                'store_final_state': False,
                'store_states': True}
@@ -72,7 +74,9 @@ def test_unitaryevo():
     
     n_traj = 3
     tlist = np.linspace(0, 10, 100)
-    unitary_solver.options = {'map': 'serial', 'keep_runs_results': True}
+    unitary_solver.options = {'map': 'serial',
+                              'keep_runs_results': True,
+                              'max_step': 0.1}
     result = unitary_solver.run(initial_state, tlist,
                                 ntraj=n_traj, e_ops=e_ops)
     
