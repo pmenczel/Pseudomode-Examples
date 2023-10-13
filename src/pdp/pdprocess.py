@@ -48,13 +48,14 @@ class PDPIntegrator(Integrator):
         super().__init__(system, options)
 
     def _prepare(self):
-        self._collapses = []
+        pass
 
     # Made generator optional to agree with parent class contract
     def set_state(self, time: float, state: NDArray,
                   generator: Optional[np.random.Generator] = None) -> None:
         self._current_time = time
         self._current_state = np.append(state, 0)
+        self._collapses = []
 
         if generator is not None:
             self._generator = generator
@@ -79,19 +80,26 @@ class PDPIntegrator(Integrator):
     def _integration_step(
             self, times: list[float]
             ) -> tuple[Optional[int], float, NDArray, list[NDArray]]:
+        if len(times) == 0:
+            return None, self._current_time, self._current_state, []
+
         minus_log_lambda = -np.log(self._generator.random())
         def event(t, state):
             return np.real(state[-1]) - minus_log_lambda
         event.terminal = True
         event.direction = 1
 
+        if self.options['scipy_method'] == 'LSODA':
+            extra_kwargs = {'min_step': self.options['min_step']}
+        else:
+            extra_kwargs = {}
         integration_result = solve_ivp(
             self._rhs, (self._current_time, times[-1]), self._current_state,
             method=self.options['scipy_method'], t_eval=times,
             events=[event], first_step=self.options['first_step'],
             max_step=self.options['max_step'],
-            min_step=self.options['min_step'],
-            rtol=self.options['rtol'], atol=self.options['atol'])
+            rtol=self.options['rtol'], atol=self.options['atol'],
+            **extra_kwargs)
         
         if len(integration_result.y) == 0:
             states = []
@@ -106,7 +114,7 @@ class PDPIntegrator(Integrator):
             jump_time = integration_result.t_events[0][0]
             jump_state = integration_result.y_events[0][0]
 
-            weights = self.system.jump_rates(jump_time, jump_state)
+            weights = self.system.jump_rates(jump_time, jump_state[:-1])
             probs = weights / sum(weights)
             jump_channel = self._generator.choice(len(weights), p=probs)
 
@@ -137,8 +145,9 @@ class PDPIntegrator(Integrator):
             self._current_state = final_state
             
             num_states = len(states)
-            yield from zip(tlist[:num_states], states[:, :-1])
-            tlist = tlist[num_states:]
+            if num_states > 0:
+                yield from zip(tlist[:num_states], states[:, :-1])
+                tlist = tlist[num_states:]
             
             if jump_channel is None:
                 break
@@ -156,6 +165,7 @@ class PDPIntegrator(Integrator):
     @options.setter
     def options(self, new_options):
         Integrator.options.fset(self, new_options)
+
 
 class PDPSolver(EnhancedMultiTrajSolver):
     """
@@ -204,5 +214,6 @@ class PDPSolver(EnhancedMultiTrajSolver):
     @classmethod
     def avail_integrators(cls):
         return cls._avail_integrators
+
 
 PDPSolver.add_integrator(PDPIntegrator, 'PDP')

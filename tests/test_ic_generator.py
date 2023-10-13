@@ -100,6 +100,5 @@ def test_exactly_solvable():
 
 
 # current TODO
-# * improve PDPIntegrator.run
 # * continue Lindblad tests
 # * make PDPTrajectoryResult

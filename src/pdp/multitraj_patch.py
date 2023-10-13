@@ -128,9 +128,9 @@ class EnhancedMultiTrajResult(qt.MultiTrajResult):
         weight = trajectory.weight
         
         old_states = trajectory.states
-        trajectory.states = [state * weight for state in old_states]
+        trajectory.states = [qt.ket2dm(state) * weight for state in old_states]
         old_final_state = trajectory.final_state
-        trajectory.final_state = old_final_state * weight
+        trajectory.final_state = qt.ket2dm(old_final_state) * weight
         old_edata = trajectory.e_data
         trajectory.e_data = {key: np.asarray(data) * weight
                              for key, data in old_edata.items()}
@@ -160,12 +160,12 @@ class EnhancedMultiTrajSolver(MultiTrajSolver):
     # Argument types mostly too complicated for type hints
     # We do not target tolerance
     def run_mixed(self, state_generator: InitialStateGenerator,
-                  tlist: list[float], ntraj: int = 1, *, args=None,
-                  e_ops=(), timeout=None, seed=None):
+                  tlist: list[float], *,
+                  args=None, e_ops=(), timeout=None, seed=None):
         start_time = time()
         self._argument(args)
         stats = self._initialize_stats()
-        seeds = self._read_seed(seed, ntraj)
+        seeds = self._read_seed(seed, state_generator.ntraj)
 
         result = self.resultclass(
             e_ops, self.options, solver=self.name, stats=stats
@@ -177,14 +177,17 @@ class EnhancedMultiTrajSolver(MultiTrajSolver):
             'job_timeout': self.options['job_timeout'],
             'num_cpus': self.options['num_cpus'],
         }
-        trajectory_infos = list(zip(state_generator.state_numbers(), seeds))
+        trajectory_infos = list(zip(seeds, state_generator.state_numbers()))
         stats['preparation time'] += time() - start_time
         
+        start_time = time()
         map_func(self._run_one_traj_mixed, trajectory_infos,
                  (state_generator, tlist, e_ops),
                  reduce_func=result.add, map_kw=map_kw,
                  progress_bar=self.options["progress_bar"],
                  progress_bar_kwargs=self.options["progress_kwargs"])
+        result.stats['run time'] = time() - start_time
+        return result
 
     def _run_one_traj_mixed(
             self,
@@ -192,7 +195,7 @@ class EnhancedMultiTrajSolver(MultiTrajSolver):
             state_generator: InitialStateGenerator,
             tlist: list[float], e_ops: Any) -> qt.Result:
         seed, state_number = trajectory_info
-        state = self.prepare_state(
+        state = self._prepare_state(
             state_generator.state(state_number))
         weight = state_generator.weight(state_number)
         

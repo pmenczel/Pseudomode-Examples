@@ -2,8 +2,10 @@
     "python.testing.pytestArgs": [
         "tests",
         "-c",
-        "pytest.ini"
+        "pytest.ini",
+        "-vv"
     ],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "jupyter.notebookFileRoot": "${workspaceFolder}/src"
 }

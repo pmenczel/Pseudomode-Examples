@@ -1,10 +1,11 @@
 __all__ = ['PDProcess', 'LindbladUnraveling']
 
-from abc import ABC, abstractmethod
+from .multitraj_patch import InitialStateGenerator
 
 import numpy as np
 import qutip as qt
 
+from abc import ABC, abstractmethod
 from typing import Any
 from numpy.typing import NDArray
 
@@ -118,3 +119,13 @@ class LindbladUnraveling(PDProcess):
 
     def arguments(self, args: Any) -> None:
         pass
+
+
+class InitialDM(InitialStateGenerator):
+    def __init__(self, state: qt.Qobj, ntraj: int):
+        eigenvalues, eigenstates = state.eigenstates()
+        weights = [1] * len(eigenvalues)
+        super().__init__(
+            zip(eigenstates, eigenvalues, weights),
+            ntraj
+        )
