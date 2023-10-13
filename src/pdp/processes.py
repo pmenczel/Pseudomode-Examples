@@ -1,4 +1,4 @@
-__all__ = ['PDProcess', 'LindbladUnraveling']
+__all__ = ['PDProcess', 'LindbladUnraveling', 'InitialDM']
 
 from .multitraj_patch import InitialStateGenerator
 

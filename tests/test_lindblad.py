@@ -164,7 +164,7 @@ def test_mixed_initial():
 
 
 def test_rabi_oscillations():
-    ntraj = 1000
+    ntraj = 500
     tlist = np.linspace(0, 5, 100)
 
     initial = qt.basis(2, 0)
@@ -198,3 +198,35 @@ def test_rabi_oscillations():
                             analytical_y * qt.sigmay() / 2 +
                             analytical_z * qt.sigmaz() / 2)
         assert (state - analytical_state).norm() < 0.1
+
+
+def test_rabi_mixed():
+    ntraj = 5000
+    tlist = np.linspace(0, 5, 100)
+
+    initial = qt.identity(2) / 2 + 4 * qt.sigmay() / 33
+    hamiltonian = qt.sigmax()
+    lindblad = qt.sigmam()
+    rate = .5
+
+    system = LindbladUnraveling(hamiltonian, [lindblad], [rate])
+    solver = PDPSolver(system, options={'map': 'parallel',
+                                        'store_states': True})
+    result = solver.run_mixed(InitialDM(initial, ntraj), tlist)
+
+    for t, state in zip(tlist, result.average_states):
+        analytical_y = (8 / 33 - (
+            16 / 33 / np.sqrt(255) *
+            np.exp(-3 * t / 8) * 
+            np.sin(np.sqrt(255) * t / 8))
+            )
+        analytical_z = (
+            -1 / 33 -
+            1 / 8415 * np.exp(-3 * t / 8) * (
+                -255 * np.cos(np.sqrt(255) * t / 8) +
+                np.sqrt(255) * np.sin(np.sqrt(255) * t / 8)
+                ))
+        analytical_state = (qt.identity(2) / 2 +
+                            analytical_y * qt.sigmay() / 2 +
+                            analytical_z * qt.sigmaz() / 2)
+        assert (state - analytical_state).norm() < 0.025
