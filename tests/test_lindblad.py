@@ -4,7 +4,7 @@ from pdp import LindbladUnraveling, PDPSolver
 import numpy as np
 import qutip as qt
 
-from pdp.processes import InitialDM
+from pdp import InitialDM
 
 
 EPSI = 1e-6

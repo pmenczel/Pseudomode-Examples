@@ -1,6 +1,6 @@
-__all__ = ['PDResult', 'PDPIntegrator', 'PDPSolver']
+__all__ = ['PDProcess', 'PDPResult', 'PDPIntegrator', 'PDPSolver']
 
-from .processes import PDProcess
+from abc import ABC, abstractmethod
 from .multitraj_patch import EnhancedMultiTrajResult, EnhancedMultiTrajSolver
 
 import numpy as np
@@ -12,7 +12,69 @@ from typing import Any, Iterable, Optional
 from numpy.typing import NDArray
 
 
-class PDResult(EnhancedMultiTrajResult):
+class PDProcess(ABC):
+    """
+    Specification of system undergoing piecewise deterministic process with
+    Poisson increments, i.e. dX = L(X) dt + sum_a[ (J_a(X) - X) dN_a ].
+    """
+
+    @abstractmethod
+    def initial_state_to_array(self, state: Any) -> NDArray:
+        """
+        The state X must be represented as a numpy array, but may also have a
+        different external representation (e.g. `QObj`).
+        This method takes an initial state `state` in the external
+        representation and returns the corresponding numpy array.
+        """
+        pass
+
+    @abstractmethod
+    def array_to_state(self, state: NDArray) -> Any:
+        """
+        Converts the given state to the external representation.
+        """
+        pass
+
+    @abstractmethod
+    def expect(self, state: NDArray, observable: Any) -> complex:
+        """
+        Expectation value of the given observable in the given state.
+        """
+        pass
+
+    @abstractmethod
+    def jump_rates(self, time: float, state: NDArray) -> list[float]:
+        """
+        Returns a list of jump rates, that is, the expectation values of the
+        increments dN_a at the current time conditioned on the current state
+        """
+        pass
+
+    @abstractmethod
+    def apply_jump(self, time: float, channel: int, state: NDArray) -> None:
+        """
+        Applies J_a to the given state, where a is specified by `channel`.
+        The array representing the state is updated in-place; this method
+        returns nothing.
+        """
+        pass
+
+    @abstractmethod
+    def deterministic_generator(
+        self, time: float, state: NDArray, result: NDArray) -> None:
+        """
+        Computes L(X), where X is the current state (`state` argument).
+        The result is returned in the numpy array `result`; this method
+        returns nothing.
+        """
+        pass
+
+    @abstractmethod
+    def arguments(self, args: Any) -> None:
+        pass
+
+
+class PDPResult(EnhancedMultiTrajResult):
     pass # TODO: store collapses (modify tests to make sure they are stored)
 
 
@@ -165,7 +227,7 @@ class PDPSolver(EnhancedMultiTrajSolver):
     a `PDProcess` object.
     """
     name = "PDP Solver"
-    resultclass = PDResult
+    resultclass = PDPResult
     _avail_integrators = {}
 
     solver_options = {
