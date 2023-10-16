@@ -57,7 +57,7 @@ class PseudoUnraveling(PDProcess):
         half = int(len(state) / 2)
         psi1 = state[:half]
         psi2 = state[half:]
-        return psi2.conj() @ observable.full() @ psi1
+        return np.vdot(psi2, observable.full() @ psi1)
     
     def jump_rates(self, time: float, state: NDArray) -> list[float]:
         return [self.jump_rate(n, time, state)
@@ -88,16 +88,16 @@ class StandardPseudoUnraveling(PseudoUnraveling):
         psi2 = state[half:]
 
         g, LdL = self._zipped_data[channel]
-        complex_rate = g * (psi2.conj() @ LdL @ psi1) / (psi2.conj() @ psi1)
+        complex_rate = g * np.vdot(psi2, LdL @ psi1) / np.vdot(psi2, psi1)
         return np.abs(complex_rate)
     
     def jump_rates(self, time, state):
         half = int(len(state) / 2)
         psi1 = state[:half]
         psi2 = state[half:]
-        norm = psi2.conj() @ psi1
+        norm = np.vdot(psi2, psi1)
 
-        return [np.abs(g * (psi2.conj() @ LdL @ psi1) / norm)
+        return [np.abs(g * np.vdot(psi2, LdL @ psi1) / norm)
                 for g, LdL in self._zipped_data]
 
 
@@ -109,17 +109,17 @@ class AlternativePseudoUnraveling(PseudoUnraveling):
 
         g, LdL = self._zipped_data[channel]
         return np.abs(g * np.sqrt(
-            (psi1.conj() @ LdL @ psi1) * (psi2.conj() @ LdL @ psi2) /
-            (psi1.conj() @ psi1) / (psi2.conj() @ psi2)))
+            np.vdot(psi1, LdL @ psi1) * np.vdot(psi2, LdL @ psi2) /
+            np.vdot(psi1, psi1) / np.vdot(psi2, psi2)))
     
     def jump_rates(self, time, state):
         half = int(len(state) / 2)
         psi1 = state[:half]
         psi2 = state[half:]
-        norm = (psi1.conj() @ psi1) * (psi2.conj() @ psi2)
+        norm = np.vdot(psi1, psi1) * np.vdot(psi2, psi2)
 
-        return [np.abs(g * np.sqrt((psi1.conj() @ LdL @ psi1) *
-                                   (psi2.conj() @ LdL @ psi2) / norm))
+        return [np.abs(g * np.sqrt(np.vdot(psi1, LdL @ psi1) *
+                                   np.vdot(psi2, LdL @ psi2) / norm))
                 for g, LdL in self._zipped_data]
 
 
@@ -130,8 +130,8 @@ class _EqualNormUnraveling(PseudoUnraveling):
         half = int(len(state) / 2)
         psi1 = state[:half]
         psi2 = state[half:]
-        norm1 = np.sqrt(psi1.conj() @ psi1)
-        norm2 = np.sqrt(psi2.conj() @ psi2)
+        norm1 = np.sqrt(np.vdot(psi1, psi1))
+        norm2 = np.sqrt(np.vdot(psi2, psi2))
 
         psi1 *= np.sqrt(norm2 / norm1)
         psi2 *= np.sqrt(norm1 / norm2)
@@ -146,8 +146,8 @@ class _EqualNormUnraveling(PseudoUnraveling):
         psi2 = state[half:]
         d_psi2 = result[half:]
 
-        f_half = np.real(((psi2.conj() @ d_psi2) - (psi1.conj() @ d_psi1)) /
-                         ((psi1.conj() @ psi1) + (psi2.conj() @ psi2)))
+        f_half = np.real((np.vdot(psi2, d_psi2) - np.vdot(psi1, d_psi1)) /
+                         (np.vdot(psi1, psi1) + np.vodt(psi2, psi2)))
         d_psi1 += f_half * psi1
         d_psi2 -= f_half * psi2
 
