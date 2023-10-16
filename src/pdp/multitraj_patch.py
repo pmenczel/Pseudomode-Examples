@@ -9,6 +9,7 @@ import qutip as qt
 
 from time import time
 from operator import itemgetter
+from collections import Counter
 import bisect
 
 from typing import Any
@@ -114,10 +115,9 @@ class InitialStateGenerator:
         return extra_weight * orig_freq * self.ntraj / traj_count
     
     def state_numbers(self) -> list[int]:
-        result = []
-        for n in range(self.nstates()):
-            result.extend([n] * self.trajectory_count(n))
-        return result
+        counts = Counter({n: self.trajectory_count(n)
+                          for n in range(self.nstates())})
+        return list(counts.elements())
 
 
 class EnhancedMultiTrajResult(qt.MultiTrajResult):
@@ -151,14 +151,14 @@ class EnhancedMultiTrajSolver(MultiTrajSolver):
     def _integrate_one_traj(self, seed: np.random.SeedSequence,
                             tlist: list[float], result: qt.Result
                             ) -> tuple[np.random.SeedSequence, qt.Result]:
-        # integrator.run discards first value of tlist
+        # Note that integrator.run discards first value of tlist
         for t, state in self._integrator.run(tlist):
             result.add(t, self._restore_state(state, copy=False))
         return seed, result
 
     # Support for mixed initial state
     # Argument types mostly too complicated for type hints
-    # We do not target tolerance
+    # We do not support target tolerance
     def run_mixed(self, state_generator: InitialStateGenerator,
                   tlist: list[float], *,
                   args=None, e_ops=(), timeout=None, seed=None):

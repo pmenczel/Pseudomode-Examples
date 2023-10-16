@@ -1,7 +1,7 @@
-__all__ = ['PDTrajectoryResult', 'PDPIntegrator', 'PDPSolver']
+__all__ = ['PDResult', 'PDPIntegrator', 'PDPSolver']
 
 from .processes import PDProcess
-from .multitraj_patch import EnhancedMultiTrajSolver
+from .multitraj_patch import EnhancedMultiTrajResult, EnhancedMultiTrajSolver
 
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -12,17 +12,8 @@ from typing import Any, Iterable, Optional
 from numpy.typing import NDArray
 
 
-class PDTrajectoryResult(qt.Result):
+class PDResult(EnhancedMultiTrajResult):
     pass # TODO: store collapses (modify tests to make sure they are stored)
-    # Also:
-    # Possibly calculate expectation values here based on system.expect instead
-    # of using system.array_to_state.
-    # However multitrajsolver applies restore_state before passing something
-    # into the result object, so array_to_state is already applied.
-    # In order to change that, we'd have to make things more complicated,
-    # which might not be worth it.
-    # (The gain would be not having to do array_to_state if store_states is set
-    # to false, which might be more expensive than direct `expect` calls)
 
 
 class PDPIntegrator(Integrator):
@@ -50,7 +41,8 @@ class PDPIntegrator(Integrator):
     def _prepare(self):
         pass
 
-    # Made generator optional to agree with parent class contract
+    # `generator`` is optional to agree with parent class contract
+    # (unlike in the mcsolve integrator)
     def set_state(self, time: float, state: NDArray,
                   generator: Optional[np.random.Generator] = None) -> None:
         self._current_time = time
@@ -61,6 +53,7 @@ class PDPIntegrator(Integrator):
             self._generator = generator
         elif self._generator is None:
             self._generator = np.random.default_rng()
+        # if `generator` is None but `self._generator` is not, we keep it
 
         self._is_set = True
     
@@ -129,11 +122,10 @@ class PDPIntegrator(Integrator):
             self._current_time = final_time
             final_state[-1] = 0
             self._current_state = final_state
-            if jump_channel is None:
-                break
+            if jump_channel is None: # no jump = reached `time`
+                return self.get_state(copy=copy)
             else:
                 self._collapses.append((final_time, jump_channel))
-        return self.get_state(copy=copy)
     
     def run(self, tlist: list[float]) -> Iterable[tuple[float, NDArray]]:
         tlist = tlist[1:]
@@ -150,7 +142,7 @@ class PDPIntegrator(Integrator):
                 tlist = tlist[num_states:]
             
             if jump_channel is None:
-                break
+                return
             else:
                 self._collapses.append((final_time, jump_channel))
             
@@ -173,7 +165,7 @@ class PDPSolver(EnhancedMultiTrajSolver):
     a `PDProcess` object.
     """
     name = "PDP Solver"
-    trajectory_resultclass = PDTrajectoryResult
+    resultclass = PDResult
     _avail_integrators = {}
 
     solver_options = {

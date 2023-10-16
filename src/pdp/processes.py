@@ -33,7 +33,6 @@ class PDProcess(ABC):
         """
         pass
 
-    # TODO make sure this is used
     @abstractmethod
     def expect(self, state: NDArray, observable: Any) -> complex:
         """
