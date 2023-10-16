@@ -1,13 +1,13 @@
 __all__ = ['PDProcess', 'PDPResult', 'PDPIntegrator', 'PDPSolver']
 
-from abc import ABC, abstractmethod
 from .multitraj_patch import EnhancedMultiTrajResult, EnhancedMultiTrajSolver
 
 import numpy as np
-from scipy.integrate import solve_ivp
 import qutip as qt
+from scipy.integrate import solve_ivp
 from qutip.solver.integrator import Integrator
 
+from abc import ABC, abstractmethod
 from typing import Any, Iterable, Optional
 from numpy.typing import NDArray
 

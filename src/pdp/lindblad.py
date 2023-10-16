@@ -1,6 +1,6 @@
 __all__ = ['LindbladUnraveling', 'InitialDM']
 
-from pdp.pdprocess import PDProcess
+from .pdprocess import PDProcess
 from .multitraj_patch import InitialStateGenerator
 
 import numpy as np
@@ -16,8 +16,8 @@ class LindbladUnraveling(PDProcess):
         if len(rates) != len(lindblad_ops):
             raise ValueError()
         self.hamiltonian = hamiltonian
-        self.rates = rates
         self.lindblad_ops = lindblad_ops
+        self.rates = rates
         
         self._L_data = [L.full() for L in lindblad_ops]
         self._zipped_data = [(g, (L.dag() * L).full())
