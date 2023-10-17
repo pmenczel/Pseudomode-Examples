@@ -1,7 +1,7 @@
 import pytest
 from pdp import (
     PDPSolver, StandardPseudoUnraveling, AlternativePseudoUnraveling,
-    StandardPseudoUnravelingEN, AlternativePseudoUnravelingEN)
+    StandardPseudoUnravelingEN, AlternativePseudoUnravelingEN, NonHermitianIC)
 
 import numpy as np
 import qutip as qt
@@ -13,7 +13,7 @@ ALL_SOLVERS = [StandardPseudoUnraveling, AlternativePseudoUnraveling,
 
 
 @pytest.fixture
-def constant_solver(request) -> PDPSolver:
+def constant_solver(request):
     solver_class = request.param
 
     H = 0 * qt.sigmaz()
@@ -22,7 +22,7 @@ def constant_solver(request) -> PDPSolver:
 
 
 @pytest.mark.parametrize('constant_solver', ALL_SOLVERS, indirect=True)
-def test_constevo_startstep(constant_solver: PDPSolver) -> None:
+def test_constevo_startstep(constant_solver):
     initial_state = qt.basis(2, 0)
     initial_dm = qt.ket2dm(initial_state)
 
@@ -33,7 +33,7 @@ def test_constevo_startstep(constant_solver: PDPSolver) -> None:
 
 @pytest.mark.parametrize('constant_solver', ALL_SOLVERS, indirect=True)
 @pytest.mark.parametrize('map', ['serial', 'parallel'])
-def test_constevo_finalstate(constant_solver: PDPSolver, map: str) -> None:
+def test_constevo_finalstate(constant_solver, map):
     initial_state = qt.basis(2, 0)
     initial_dm = qt.ket2dm(initial_state)
 
@@ -53,16 +53,16 @@ def test_constevo_finalstate(constant_solver: PDPSolver, map: str) -> None:
         assert (traj.final_state - initial_dm).norm() < EPSI
 
 
-@pytest.mark.parametrize('solver_class', ALL_SOLVERS)
-def test_zero_rate(solver_class) -> None:
-    system = solver_class(
+@pytest.mark.parametrize('process_class', ALL_SOLVERS)
+def test_zero_rate(process_class):
+    system = process_class(
         0 * qt.sigmaz(), [qt.sigmam()], [0])
     test_constevo_finalstate(PDPSolver(system), 'serial')
 
 
 @pytest.mark.parametrize('constant_solver', ALL_SOLVERS, indirect=True)
 @pytest.mark.parametrize('map', ['serial', 'parallel'])
-def test_constevo_states(constant_solver: PDPSolver, map: str) -> None:
+def test_constevo_states(constant_solver, map):
     initial_state = qt.basis(2, 0)
     initial_dm = qt.ket2dm(initial_state)
 
@@ -81,3 +81,95 @@ def test_constevo_states(constant_solver: PDPSolver, map: str) -> None:
 
     for state in result.average_states:
         assert (state - initial_dm).norm() < EPSI
+
+
+def _hamiltonian_only_analytical(hx, hz, x0, z0, tlist):
+    return [
+        [(hx * (hx*x0+hz*z0) +
+          hz * (hz*x0 - hx*z0) * np.cosh(2*t*np.sqrt(-hx**2 - hz**2))) /
+          (hx**2 + hz**2) for t in tlist],
+        [((hz*x0 - hx*z0) * np.sinh(2*t*np.sqrt(-hx**2 - hz**2)) /
+          np.sqrt(-hx**2 - hz**2)) for t in tlist],
+        [(hz * (hx*x0+hz*z0) +
+          hx * (hx*z0 - hz*x0) * np.cosh(2*t*np.sqrt(-hx**2 - hz**2))) /
+          (hx**2 + hz**2) for t in tlist]
+    ]
+
+
+def _hamiltonian_only_solver(process_class, hx, hz):
+    H = hx * qt.sigmax() + hz * qt.sigmaz()
+    return PDPSolver(process_class(H, [], []),
+                     options={'keep_runs_results': True,
+                              'map': 'serial',
+                              'store_states': False,
+                              'max_step': 0.05})
+
+
+@pytest.mark.parametrize('process_class', ALL_SOLVERS)
+@pytest.mark.parametrize('hx, hz', [(1, 1), (.5j, 1), (2j, 1),
+                                    (1j, 0), (0, 1j)])
+@pytest.mark.parametrize('initial_state, x0, z0', [
+    (qt.basis(2, 0), 0, 1),
+    ((qt.basis(2, 0) + qt.basis(2, 1)) / np.sqrt(2), 1, 0)])
+def test_hamiltonian_only_pure(process_class, hx, hz, initial_state, x0, z0):
+    tlist = np.linspace(0, 5, 100)
+    ntraj = 5
+
+    solution = _hamiltonian_only_analytical(complex(hx), complex(hz),
+                                            x0, z0, tlist)
+    solver = _hamiltonian_only_solver(process_class, hx, hz)
+    result = solver.run(initial_state, tlist, ntraj=ntraj,
+                        e_ops=[qt.sigmax(), qt.sigmay(), qt.sigmaz()])
+    assert result.num_trajectories == ntraj
+
+    for traj in result.trajectories:
+        np.testing.assert_allclose(traj.expect, solution, atol=EPSI, rtol=EPSI)
+
+
+@pytest.mark.parametrize('process_class', ALL_SOLVERS)
+@pytest.mark.parametrize('hx, hz', [(1, 1), (.5j, 1), (2j, 1),
+                                    (1j, 0), (0, 1j)])
+@pytest.mark.parametrize('x0, z0', [(0, 0), (.5, 0), (0, .5j), (1j, -1j)])
+def test_hamiltonian_only_mixed(process_class, hx, hz, x0, z0):
+    tlist = np.linspace(0, 5, 100)
+    ntraj = 5
+
+    initial = NonHermitianIC(
+        qt.qeye(2) / 2 + x0 * qt.sigmax() / 2 + z0 * qt.sigmaz() / 2,
+        ntraj)
+    solution = _hamiltonian_only_analytical(complex(hx), complex(hz),
+                                            x0, z0, tlist)
+    solver = _hamiltonian_only_solver(process_class, hx, hz)
+    result = solver.run_mixed(initial, tlist,
+                              e_ops=[qt.sigmax(), qt.sigmay(), qt.sigmaz()])
+    assert result.num_trajectories == ntraj
+    np.testing.assert_allclose(result.average_expect, solution,
+                               atol=EPSI, rtol=EPSI)
+
+
+@pytest.mark.parametrize('process_class', ALL_SOLVERS)
+@pytest.mark.parametrize('rate', [0, 1, -1, 1j, -1j])
+def test_simple_decay(process_class, rate):
+    tlist = np.linspace(0, 3, 25)
+    ntraj = 1000
+
+    initial = qt.basis(2, 0)
+    solution = [
+        (np.exp(-rate * t) * qt.fock_dm(2, 0) +
+         (1 - np.exp(-rate * t)) * qt.fock_dm(2, 1)) for t in tlist]
+    process = process_class(0 * qt.sigmaz(), [qt.sigmam()], [rate])
+    solver = PDPSolver(process, options={'map': 'serial', 'max_step': 0.1,
+                                         'keep_runs_results': False,
+                                         'store_states': True})
+    result = solver.run(initial, tlist, ntraj)
+    assert result.num_trajectories == ntraj
+
+    for t, state1, state2 in zip(tlist, result.average_states, solution):
+        assert (state1 - state2).norm() < 0.1 + 0.1 * state2.norm()
+
+# TODO fix whatever is going wrong here -- the problem occurs at the first
+#       time step after zero, so it doesn't seem to be too few trajectories
+# TODO add assertion for collapses
+# TODO check equal norm solvers keep norm equal
+# TODO add one complete example
+# TODO add unraveling class emulating solving associated lindblad equation

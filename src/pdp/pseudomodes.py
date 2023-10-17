@@ -64,8 +64,8 @@ class PseudoUnraveling(PDProcess):
                 for n in range(len(self._L_data))]
 
     def apply_jump(self, time: float, channel: int, state: NDArray) -> None:
-        factor = np.sqrt(self.rates[channel] /
-                         self.jump_rate(channel, time, state))
+        factor = np.emath.sqrt(self.rates[channel] /
+                               self.jump_rate(channel, time, state))
         state[:] = factor * (self._L_data[channel] @ state)
 
     def deterministic_generator(

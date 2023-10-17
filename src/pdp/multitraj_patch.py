@@ -121,6 +121,11 @@ class InitialStateGenerator:
 
 
 class EnhancedMultiTrajResult(qt.MultiTrajResult):
+    def _weighted_dm(self, state, weight):
+        if state is None:
+            return state
+        return qt.ket2dm(state) * weight
+
     def add(self, trajectory_info: tuple[np.random.SeedSequence, qt.Result]):
         _, trajectory = trajectory_info
         if not hasattr(trajectory, 'weight'):
@@ -128,9 +133,10 @@ class EnhancedMultiTrajResult(qt.MultiTrajResult):
         weight = trajectory.weight
         
         old_states = trajectory.states
-        trajectory.states = [qt.ket2dm(state) * weight for state in old_states]
+        trajectory.states = [self._weighted_dm(state, weight)
+                             for state in old_states]
         old_final_state = trajectory.final_state
-        trajectory.final_state = qt.ket2dm(old_final_state) * weight
+        trajectory.final_state = self._weighted_dm(old_final_state, weight)
         old_edata = trajectory.e_data
         trajectory.e_data = {key: np.asarray(data) * weight
                              for key, data in old_edata.items()}
