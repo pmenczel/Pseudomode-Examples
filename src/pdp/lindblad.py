@@ -30,7 +30,7 @@ class LindbladUnraveling(PDProcess):
         self.dims = hamiltonian.eigenstates(eigvals=1)[-1][0].dims
 
     def initial_state_to_array(self, state: qt.Qobj) -> NDArray:
-        return np.copy(state.full())
+        return state.full().flatten() # note that flatten returns a copy
 
     def array_to_state(self, state: NDArray) -> qt.Qobj:
         return qt.Qobj(state, dims=self.dims)

@@ -44,7 +44,7 @@ class PseudoUnraveling(PDProcess):
     def initial_state_to_array(self, state: qt.Qobj) -> NDArray:
         # The initial state is given as a vector
         # Output states will be given as density matrices
-        state_vec = state.full()
+        state_vec = state.full().flatten()
         return np.block([state_vec, state_vec])
 
     def array_to_state(self, state: NDArray) -> qt.Qobj:
@@ -147,7 +147,7 @@ class _EqualNormUnraveling(PseudoUnraveling):
         d_psi2 = result[half:]
 
         f_half = np.real((np.vdot(psi2, d_psi2) - np.vdot(psi1, d_psi1)) /
-                         (np.vdot(psi1, psi1) + np.vodt(psi2, psi2)))
+                         (np.vdot(psi1, psi1) + np.vdot(psi2, psi2)))
         d_psi1 += f_half * psi1
         d_psi2 -= f_half * psi2
 

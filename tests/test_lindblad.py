@@ -1,10 +1,8 @@
 import pytest
-from pdp import LindbladUnraveling, PDPSolver
+from pdp import LindbladUnraveling, InitialDM, PDPSolver
 
 import numpy as np
 import qutip as qt
-
-from pdp import InitialDM
 
 
 EPSI = 1e-6
