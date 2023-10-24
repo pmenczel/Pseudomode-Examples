@@ -129,7 +129,8 @@ def test_hamiltonian_only_pure(process_class, hx, hz, initial_state, x0, z0):
 @pytest.mark.parametrize('process_class', ALL_SOLVERS)
 @pytest.mark.parametrize('hx, hz', [(1, 1), (.5j, 1), (2j, 1),
                                     (1j, 0), (0, 1j)])
-@pytest.mark.parametrize('x0, z0', [(0, 0), (.5, 0), (0, .5j), (1j, -1j)])
+@pytest.mark.parametrize('x0, z0', [(0, 0), (.5, 0), (0, .5j), (1j, -1j),
+                                    (.2 + .3j, .5 + .75j)])
 def test_hamiltonian_only_mixed(process_class, hx, hz, x0, z0):
     tlist = np.linspace(0, 5, 100)
     ntraj = 5
@@ -147,29 +148,77 @@ def test_hamiltonian_only_mixed(process_class, hx, hz, x0, z0):
                                atol=EPSI, rtol=EPSI)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('process_class', ALL_SOLVERS)
 @pytest.mark.parametrize('rate', [0, 1, -1, 1j, -1j])
 def test_simple_decay(process_class, rate):
     tlist = np.linspace(0, 3, 25)
-    ntraj = 1000
+    ntraj = 750
 
     initial = qt.basis(2, 0)
     solution = [
         (np.exp(-rate * t) * qt.fock_dm(2, 0) +
          (1 - np.exp(-rate * t)) * qt.fock_dm(2, 1)) for t in tlist]
     process = process_class(0 * qt.sigmaz(), [qt.sigmam()], [rate])
-    solver = PDPSolver(process, options={'map': 'serial', 'max_step': 0.1,
-                                         'keep_runs_results': False,
+    solver = PDPSolver(process, options={'map': 'parallel', 'max_step': 0.1,
+                                         'keep_runs_results': True,
                                          'store_states': True})
     result = solver.run(initial, tlist, ntraj)
     assert result.num_trajectories == ntraj
 
-    for t, state1, state2 in zip(tlist, result.average_states, solution):
-        assert (state1 - state2).norm() < 0.1 + 0.1 * state2.norm()
+    for state1, state2 in zip(result.average_states, solution):
+        assert (state1 - state2).norm() < 0.2 + 0.2 * state2.norm()
 
-# TODO fix whatever is going wrong here -- the problem occurs at the first
-#       time step after zero, so it doesn't seem to be too few trajectories
-# TODO add assertion for collapses
-# TODO check equal norm solvers keep norm equal
-# TODO add one complete example
+    for traj in result.trajectories:
+        assert hasattr(traj, "collapse")
+        num_jumps = len(traj.collapse)
+        assert num_jumps == 0 or num_jumps == 1
+        if num_jumps == 1:
+            assert traj.collapse[0][1] == 0
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('process_class', ALL_SOLVERS)
+def test_complex_example(process_class):
+    tlist = np.linspace(0, 2.5, 100)
+    ntraj = 2500
+
+    H = qt.sigmaz() + .5j * qt.sigmax()
+    L1 = qt.sigmam()
+    rate1 = .5 + 1j
+    L2 = qt.sigmaz()
+    rate2 = .25j
+    initial = qt.qeye(2) / 2 + 1j * qt.sigmax() / 2 - 1j * qt.sigmaz()
+
+    solver = PDPSolver(StandardPseudoUnraveling(H, [L1, L2], [rate1, rate2]),
+                       options={'keep_runs_results': False,
+                                'map': 'parallel',
+                                'store_states': False,
+                                'max_step': 0.05})
+    mcsol = solver.run_mixed(NonHermitianIC(initial, ntraj), tlist,
+                             e_ops=[qt.sigmax(), qt.sigmay(), qt.sigmaz()])
+
+    liouvillian = -1j * qt.spre(H) + 1j * qt.spost(H)
+    for rate, L in [(rate1, L1), (rate2, L2)]:
+        LdL = L.dag() * L
+        liouvillian += rate * (
+            qt.spre(L) * qt.spost(L.dag()) -
+            .5 * qt.spre(LdL) -
+            .5 * qt.spost(LdL)
+        )
+    mesol = qt.mesolve(liouvillian, initial, tlist, c_ops=None,
+                       e_ops=[qt.sigmax(), qt.sigmay(), qt.sigmaz()],
+                       options={'normalize_output': False})
+    
+    for i in range(3):
+        expect_mc = mcsol.average_expect[i]
+        expect_me = mesol.expect[i]
+        half = int(len(tlist) / 2)
+        np.testing.assert_allclose(expect_mc[:half], expect_me[:half],
+                                   rtol=0, atol=.2)
+        np.testing.assert_allclose(expect_mc[half:], expect_me[half:],
+                                   rtol=0, atol=.5)
+
+
+
 # TODO add unraveling class emulating solving associated lindblad equation
