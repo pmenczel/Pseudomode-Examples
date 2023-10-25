@@ -127,16 +127,27 @@ def setup_example():
 if __name__ == "__main__":
     ex1 = setup_example()
 
-    process = pdp.StandardPseudoUnraveling(
-        ex1['Htot'], ex1['lindblad_ops'], ex1['rates']
-    )
-    initial_state = pdp.NonHermitianIC(ex1['rho0'], ntraj=10000)
-    solver = pdp.PDPSolver(
-        process, options={'map': 'parallel', 'num_cpus': NUM_CPUS,
-                          'max_step': 0.5, 'keep_runs_results': False,
-                          'store_states': False, 'store_final_state': False,
-                          'progress_bar': 'tqdm'}
-    )
+    unravelings = [
+        pdp.StandardPseudoUnraveling,
+        pdp.AlternativePseudoUnraveling,
+        pdp.UnravelingLikeAppendixC4,
+    ]
+    NTRAJ_PER_RUN = 1000
 
-    result = solver.run_mixed(initial_state, TLIST, e_ops=[ex1['Hs']])
-    qt.qsave(result, './tmp10k')
+    i = 0
+    while True:
+        for cls in unravelings:
+            process = cls(ex1['Htot'], ex1['lindblad_ops'], ex1['rates'])
+            initial_state = pdp.NonHermitianIC(
+                ex1['rho0'], ntraj=NTRAJ_PER_RUN)
+            solver = pdp.PDPSolver(
+                process, options={'map': 'parallel', 'num_cpus': NUM_CPUS,
+                                  'max_step': 0.5, 'keep_runs_results': False,
+                                  'store_states': False,
+                                  'store_final_state': False,
+                                  'progress_bar': 'tqdm'}
+            )
+
+            result = solver.run_mixed(initial_state, TLIST, e_ops=[ex1['Hs']])
+
+            qt.qsave(result, f"./result-{i}-{cls.__name__}")
