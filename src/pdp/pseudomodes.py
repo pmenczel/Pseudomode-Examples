@@ -251,7 +251,8 @@ class NonHermitianIC(InitialStateGenerator):
 
         frequencies = np.array([np.abs(lamb) for lamb in eigenvalues])
         frequencies /= sum(frequencies)
-        weights = [lamb / freq for lamb, freq in zip(eigenvalues, frequencies)]
+        weights = [0 if freq == 0 else lamb / freq
+                   for lamb, freq in zip(eigenvalues, frequencies)]
 
         super().__init__(
             zip(eigenstates, frequencies, weights),

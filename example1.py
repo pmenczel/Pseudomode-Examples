@@ -1,6 +1,4 @@
-__all__ = ['setup_example']
-
-from pdp import PDPSolver
+import pdp
 
 import numpy as np
 import qutip as qt
@@ -14,14 +12,14 @@ try:
 except ImportError:
     pass
 
-NUM_CPUS = 5
+NUM_CPUS = 12
 
 
 ##### NUMERICS ################################################################
 
-NUM_MATSUBARA = 1
-PM_CUTOFF = 3
-TLIST = np.linspace(0, 100, 500)
+NUM_MATSUBARA = 0
+PM_CUTOFF = [9, 3]
+TLIST = np.linspace(0, 75, 250)
 
 
 ##### PARAMETERS ##############################################################
@@ -41,7 +39,7 @@ def cot(z):
 
 
 def setup_example():
-    pm_identity = qt.tensor(*([qt.qeye(PM_CUTOFF)] * (NUM_MATSUBARA + 2)))
+    pm_identity = qt.tensor(*[qt.qeye(c) for c in PM_CUTOFF])
 
     Hs = (DELTA / 2) * qt.sigmax() & pm_identity
     Q = qt.sigmaz() & pm_identity
@@ -62,7 +60,7 @@ def setup_example():
         0, 2 * nu_p, 0, np.sqrt(a_p - np.conj(a_p))))
 
     # matsubara modes
-    for k in range(NUM_MATSUBARA):
+    for k in range(1, NUM_MATSUBARA + 1):
         nu_k = 2 * np.pi * k / BETA
         a_k = -4 * COUP_STRENGTH**2 * HALF_WIDTH / BETA * nu_k / (
             (nu_p**2 + nu_k**2) * (nu_m**2 + nu_k**2))
@@ -74,29 +72,71 @@ def setup_example():
     rho0 = rho0s
     lindblad_ops = []
     rates = []
+    # also collect heat current operators which are -L_n^\dag ( H_{i,n} )
+    # where L_n is free evolution generator of that PM and \dag is
+    # Hilbert-Schmidt adjoint and H_{i,n} is interaction Hamiltonian
+    heat_current_ops = []
 
     for i, (W, G, N, lam) in enumerate(pseudomode_info):
-        identity_before = qt.qeye(2) & qt.tensor(*([qt.qeye(PM_CUTOFF)] * i))
-        identity_after = qt.tensor(*([qt.qeye(PM_CUTOFF)] *
-                                     (NUM_MATSUBARA + 2 - i)))
-        create = identity_before & qt.create(PM_CUTOFF) & identity_after
-        destroy = identity_before & qt.destroy(PM_CUTOFF) & identity_after
+        identities_before = [
+            qt.qeye(2),
+            *[qt.qeye(c) for j, c in enumerate(PM_CUTOFF) if j < i]]
+        identities_after = [qt.qeye(c)
+                            for j, c in enumerate(PM_CUTOFF) if j > i]
+        create = qt.tensor(*identities_before, qt.create(PM_CUTOFF[i]),
+                           *identities_after)
+        destroy = qt.tensor(*identities_before, qt.destroy(PM_CUTOFF[i]),
+                            *identities_after)
 
         Htot += W * create * destroy
-        Htot += lam * Q * (create + destroy)
+        HI = lam * Q * (create + destroy)
+        Htot += HI
         if N == 0:
             lindblad_ops.extend([destroy])
             rates.extend([G])
-            rho0 = rho0 & qt.fock_dm(PM_CUTOFF)
+            rho0 = rho0 & qt.fock_dm(PM_CUTOFF[i])
         else:
             lindblad_ops.extend([destroy, create])
             rates.extend([G * (N + 1), G * N])
-            rho0 = rho0 & qt.thermal_dm(PM_CUTOFF, N)
+            rho0 = rho0 & qt.thermal_dm(PM_CUTOFF[i], N)
 
-    return Htot, rho0, lindblad_ops, rates
+        heat_current_ops.append(
+            -1j * W * (HI * create * destroy - create * destroy * HI) -
+            G * (N + 1) * (destroy * HI * create - destroy * create * HI / 2 -
+                           HI * destroy * create / 2) -
+            G * N * (create * HI * destroy - create * destroy * HI / 2 -
+                     HI * create * destroy / 2)
+        )
+
+    return {
+        'Htot': Htot,
+        'Hs': Hs,
+        'Q': Q,
+        'rho0': rho0,
+        'lindblad_ops': lindblad_ops,
+        'rates': rates,
+        'Hs_system': (DELTA / 2) * qt.sigmax(),
+        'Q_system': qt.sigmaz(),
+        'rho0_system': rho0s,
+        'heat_current_ops': heat_current_ops
+    }
 
 
 ###############################################################################
 
 if __name__ == "__main__":
-    setup_example()
+    ex1 = setup_example()
+
+    process = pdp.StandardPseudoUnraveling(
+        ex1['Htot'], ex1['lindblad_ops'], ex1['rates']
+    )
+    initial_state = pdp.NonHermitianIC(ex1['rho0'], ntraj=10000)
+    solver = pdp.PDPSolver(
+        process, options={'map': 'parallel', 'num_cpus': NUM_CPUS,
+                          'max_step': 0.5, 'keep_runs_results': False,
+                          'store_states': False, 'store_final_state': False,
+                          'progress_bar': 'tqdm'}
+    )
+
+    result = solver.run_mixed(initial_state, TLIST, e_ops=[ex1['Hs']])
+    qt.qsave(result, './tmp10k')
