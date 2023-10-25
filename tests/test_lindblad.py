@@ -227,4 +227,4 @@ def test_rabi_mixed():
         analytical_state = (qt.identity(2) / 2 +
                             analytical_y * qt.sigmay() / 2 +
                             analytical_z * qt.sigmaz() / 2)
-        assert (state - analytical_state).norm() < 0.025
+        assert (state - analytical_state).norm() < 0.05

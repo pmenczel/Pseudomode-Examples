@@ -1,15 +1,17 @@
 import pytest
 from pdp import (
     PDPSolver, StandardPseudoUnraveling, AlternativePseudoUnraveling,
-    StandardPseudoUnravelingEN, AlternativePseudoUnravelingEN, NonHermitianIC)
+    StandardPseudoUnravelingEN, AlternativePseudoUnravelingEN,
+    UnravelingLikeAppendixC4, NonHermitianIC)
 
 import numpy as np
 import qutip as qt
 
 
 EPSI = 1e-6
-ALL_SOLVERS = [StandardPseudoUnraveling, AlternativePseudoUnraveling,
-               StandardPseudoUnravelingEN, AlternativePseudoUnravelingEN]
+NORMAL_SOLVERS = [StandardPseudoUnraveling, AlternativePseudoUnraveling,
+                  StandardPseudoUnravelingEN, AlternativePseudoUnravelingEN]
+ALL_SOLVERS = NORMAL_SOLVERS + [UnravelingLikeAppendixC4]
 
 
 @pytest.fixture
@@ -105,7 +107,7 @@ def _hamiltonian_only_solver(process_class, hx, hz):
                               'max_step': 0.05})
 
 
-@pytest.mark.parametrize('process_class', ALL_SOLVERS)
+@pytest.mark.parametrize('process_class', NORMAL_SOLVERS)
 @pytest.mark.parametrize('hx, hz', [(1, 1), (.5j, 1), (2j, 1),
                                     (1j, 0), (0, 1j)])
 @pytest.mark.parametrize('initial_state, x0, z0', [
@@ -126,7 +128,35 @@ def test_hamiltonian_only_pure(process_class, hx, hz, initial_state, x0, z0):
         np.testing.assert_allclose(traj.expect, solution, atol=EPSI, rtol=EPSI)
 
 
-@pytest.mark.parametrize('process_class', ALL_SOLVERS)
+@pytest.mark.parametrize('hx, hz', [(1, 1), (.5j, 1), (2j, 1),
+                                    (1j, 0), (0, 1j)])
+@pytest.mark.parametrize('initial_state, x0, z0', [
+    (qt.basis(2, 0), 0, 1),
+    ((qt.basis(2, 0) + qt.basis(2, 1)) / np.sqrt(2), 1, 0)])
+def test_hamiltonian_only_C4(hx, hz, initial_state, x0, z0):
+    # for hermitian hamiltonian, trajectories are still deterministic
+    if np.imag(hx) == 0 and np.imag(hz) == 0:
+        test_hamiltonian_only_pure(UnravelingLikeAppendixC4,
+                                   hx, hz, initial_state, x0, z0)
+        return
+    
+    # otherwise, trajectories are stochastic now, have to increase ntraj
+    tlist = np.linspace(0, 2.5, 50)
+    ntraj = 1000
+
+    solution = _hamiltonian_only_analytical(complex(hx), complex(hz),
+                                            x0, z0, tlist)
+    solver = _hamiltonian_only_solver(UnravelingLikeAppendixC4, hx, hz)
+    solver.options = {'map': 'parallel', 'keep_runs_results': False}
+    result = solver.run(initial_state, tlist, ntraj=ntraj,
+                        e_ops=[qt.sigmax(), qt.sigmay(), qt.sigmaz()])
+    assert result.num_trajectories == ntraj
+
+    np.testing.assert_allclose(solution, result.average_expect,
+                               atol=.5, rtol=0.15)
+
+
+@pytest.mark.parametrize('process_class', NORMAL_SOLVERS)
 @pytest.mark.parametrize('hx, hz', [(1, 1), (.5j, 1), (2j, 1),
                                     (1j, 0), (0, 1j)])
 @pytest.mark.parametrize('x0, z0', [(0, 0), (.5, 0), (0, .5j), (1j, -1j),
@@ -153,7 +183,10 @@ def test_hamiltonian_only_mixed(process_class, hx, hz, x0, z0):
 @pytest.mark.parametrize('rate', [0, 1, -1, 1j, -1j])
 def test_simple_decay(process_class, rate):
     tlist = np.linspace(0, 3, 25)
-    ntraj = 750
+    if process_class == UnravelingLikeAppendixC4:
+        ntraj = 2000
+    else:
+        ntraj = 1000
 
     initial = qt.basis(2, 0)
     solution = [
@@ -171,17 +204,21 @@ def test_simple_decay(process_class, rate):
 
     for traj in result.trajectories:
         assert hasattr(traj, "collapse")
-        num_jumps = len(traj.collapse)
-        assert num_jumps == 0 or num_jumps == 1
-        if num_jumps == 1:
-            assert traj.collapse[0][1] == 0
+        if process_class != UnravelingLikeAppendixC4:
+            num_jumps = len(traj.collapse)
+            assert num_jumps == 0 or num_jumps == 1
+            if num_jumps == 1:
+                assert traj.collapse[0][1] == 0
 
 
 @pytest.mark.slow
 @pytest.mark.parametrize('process_class', ALL_SOLVERS)
 def test_complex_example(process_class):
     tlist = np.linspace(0, 2.5, 100)
-    ntraj = 2500
+    if process_class == UnravelingLikeAppendixC4:
+        ntraj = 5000
+    else:
+        ntraj = 2500
 
     H = qt.sigmaz() + .5j * qt.sigmax()
     L1 = qt.sigmam()
@@ -190,7 +227,7 @@ def test_complex_example(process_class):
     rate2 = .25j
     initial = qt.qeye(2) / 2 + 1j * qt.sigmax() / 2 - 1j * qt.sigmaz()
 
-    solver = PDPSolver(StandardPseudoUnraveling(H, [L1, L2], [rate1, rate2]),
+    solver = PDPSolver(process_class(H, [L1, L2], [rate1, rate2]),
                        options={'keep_runs_results': False,
                                 'map': 'parallel',
                                 'store_states': False,
@@ -218,7 +255,3 @@ def test_complex_example(process_class):
                                    rtol=0, atol=.2)
         np.testing.assert_allclose(expect_mc[half:], expect_me[half:],
                                    rtol=0, atol=.5)
-
-
-
-# TODO add unraveling class emulating solving associated lindblad equation

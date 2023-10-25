@@ -1,8 +1,8 @@
-__all__ = ['PseudoUnraveling',
-           'StandardPseudoUnraveling',
+__all__ = ['StandardPseudoUnraveling',
            'AlternativePseudoUnraveling',
            'StandardPseudoUnravelingEN',
            'AlternativePseudoUnravelingEN',
+           'UnravelingLikeAppendixC4',
            'NonHermitianIC']
 
 from .pdprocess import PDProcess
@@ -27,7 +27,7 @@ class PseudoUnraveling(PDProcess):
         self.hamiltonian = hamiltonian
         self.lindblad_ops = lindblad_ops
         self.rates = rates
-        
+
         self._L_data = [block_diag(L.full(), L.full()) for L in lindblad_ops]
         self._zipped_data = [(g, (L.dag() * L).full())
                              for g, L in zip(rates, lindblad_ops)]
@@ -58,7 +58,7 @@ class PseudoUnraveling(PDProcess):
         psi1 = state[:half]
         psi2 = state[half:]
         return np.vdot(psi2, observable.full() @ psi1)
-    
+
     def jump_rates(self, time: float, state: NDArray) -> list[float]:
         return [self.jump_rate(n, time, state)
                 for n in range(len(self._L_data))]
@@ -73,7 +73,7 @@ class PseudoUnraveling(PDProcess):
         state[half:] *= np.conj(factor)
 
     def deterministic_generator(
-        self, time: float, state: NDArray, result: NDArray) -> None:
+            self, time: float, state: NDArray, result: NDArray) -> None:
         alpha = sum(self.jump_rates(time, state)) / 2
         result[:] = (-1j * self._H_eff @ state) + (alpha * state)
 
@@ -94,7 +94,7 @@ class StandardPseudoUnraveling(PseudoUnraveling):
         g, LdL = self._zipped_data[channel]
         complex_rate = g * np.vdot(psi2, LdL @ psi1) / np.vdot(psi2, psi1)
         return np.abs(complex_rate)
-    
+
     def jump_rates(self, time, state):
         half = int(len(state) / 2)
         psi1 = state[:half]
@@ -115,7 +115,7 @@ class AlternativePseudoUnraveling(PseudoUnraveling):
         return np.abs(g * np.sqrt(
             np.vdot(psi1, LdL @ psi1) * np.vdot(psi2, LdL @ psi2) /
             np.vdot(psi1, psi1) / np.vdot(psi2, psi2)))
-    
+
     def jump_rates(self, time, state):
         half = int(len(state) / 2)
         psi1 = state[:half]
@@ -130,7 +130,7 @@ class AlternativePseudoUnraveling(PseudoUnraveling):
 class _EqualNormUnraveling(PseudoUnraveling):
     def apply_jump(self, time: float, channel: int, state: NDArray) -> None:
         super().apply_jump(time, channel, state)
-        
+
         half = int(len(state) / 2)
         psi1 = state[:half]
         psi2 = state[half:]
@@ -141,9 +141,9 @@ class _EqualNormUnraveling(PseudoUnraveling):
         psi2 *= np.sqrt(norm1 / norm2)
 
     def deterministic_generator(
-        self, time: float, state: NDArray, result: NDArray) -> None:
+            self, time: float, state: NDArray, result: NDArray) -> None:
         super().deterministic_generator(time, state, result)
-        
+
         half = int(len(state) / 2)
         psi1 = state[:half]
         d_psi1 = result[:half]
@@ -164,6 +164,84 @@ class StandardPseudoUnravelingEN(StandardPseudoUnraveling,
 class AlternativePseudoUnravelingEN(AlternativePseudoUnraveling,
                                     _EqualNormUnraveling):
     pass
+
+
+class UnravelingLikeAppendixC4(PDProcess):
+    def __init__(self, hamiltonian: qt.Qobj,
+                 lindblad_ops: list[qt.Qobj], rates: list[float]):
+        self.hamiltonian = hamiltonian
+        self.lindblad_ops = lindblad_ops
+        self.rates = rates
+
+        HR = (hamiltonian + hamiltonian.dag()) / 2
+        HI = (hamiltonian - hamiltonian.dag()) / 2j
+        L_hat = [(qt.qeye(2) & L) for L in lindblad_ops]
+        _term = sum(np.imag(gamma) * L.dag() * L
+                    for gamma, L in zip(rates, lindblad_ops)) / 2
+        H_hat = (
+            (qt.qeye(2) & HR) +
+            (qt.sigmaz() & (qt.qzero_like(HR) if _term == 0 else _term))
+        )
+        X = (2 * (qt.sigmaz() & HI) +
+             sum((np.abs(gamma) - np.real(gamma)) * L.dag() * L
+                 for gamma, L in zip(rates, L_hat)))
+
+        self._Lambda = max(X.eigenenergies())
+        L0 = (self._Lambda * qt.qeye(X.dims[0]) - X).sqrtm()
+
+        self._gamma = rates + [0]
+        self._Gamma = [np.abs(rate) for rate in rates] + [1]
+        self._L_hat = [L.full() for L in L_hat] + [L0.full()]
+        self._zipped = ([(np.abs(rate), (L.dag() * L).full())
+                         for rate, L in zip(rates, L_hat)] +
+                        [(1, (L0.dag() * L0).full())])
+        self._H_eff = (H_hat.full() - .5j * sum(
+            Gamma * LdL for Gamma, LdL in self._zipped))
+
+        self.dims = hamiltonian.eigenstates(eigvals=1)[-1][0].dims
+
+    def initial_state_to_array(self, state: qt.Qobj) -> NDArray:
+        # Like in standard unraveling, but add martingale
+        # We normalize so that norm of double vector is one
+        state_vec = state.full().flatten() / np.sqrt(2)
+        return np.block([state_vec, state_vec, 2])
+
+    def array_to_state(self, state: NDArray) -> qt.Qobj:
+        half = int((len(state) - 1) / 2)
+        psi1 = qt.Qobj(state[:half], dims=self.dims)
+        psi2 = qt.Qobj(state[half:-1], dims=self.dims)
+        mu = state[-1]
+        return mu * psi1 * psi2.dag()
+
+    def expect(self, state: NDArray, observable: qt.Qobj) -> complex:
+        half = int((len(state) - 1) / 2)
+        psi1 = qt.Qobj(state[:half], dims=self.dims)
+        psi2 = qt.Qobj(state[half:-1], dims=self.dims)
+        mu = state[-1]
+        return mu * np.vdot(psi2, observable.full() @ psi1)
+
+    def jump_rates(self, time: float, state: NDArray) -> list[float]:
+        return [self.jump_rate(channel, time, state)
+                for channel in range(len(self._zipped))]
+
+    def jump_rate(self, channel: int, time: float, state: NDArray) -> float:
+        Gamma, LdL = self._zipped[channel]
+        return np.real(Gamma * np.vdot(state[:-1], LdL @ state[:-1]))
+
+    def apply_jump(self, time: float, channel: int, state: NDArray) -> None:
+        factor = np.sqrt(self._Gamma[channel] /
+                         self.jump_rate(channel, time, state))
+        state[:-1] = factor * self._L_hat[channel] @ state[:-1]
+        state[-1] *= self._gamma[channel] / self._Gamma[channel]
+
+    def deterministic_generator(
+            self, time: float, state: NDArray, result: NDArray) -> None:
+        alpha = sum(self.jump_rates(time, state)) / 2
+        result[:-1] = (-1j * self._H_eff @ state[:-1]) + (alpha * state[:-1])
+        result[-1] = self._Lambda * state[-1]
+
+    def arguments(self, args: Any) -> None:
+        pass
 
 
 class NonHermitianIC(InitialStateGenerator):
