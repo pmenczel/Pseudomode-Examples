@@ -97,8 +97,3 @@ def test_exactly_solvable():
             assert gen.trajectory_count(n) == 75
             assert gen.weight(n) == 1j
     assert Counter(gen.state_numbers()) == Counter([na] * 25 + [nb] * 75)
-
-
-# current TODO
-# * continue Lindblad tests
-# * make PDPTrajectoryResult
