@@ -157,6 +157,11 @@ class EnhancedMultiTrajResult(qt.MultiTrajResult):
 class EnhancedMultiTrajSolver(MultiTrajSolver):
     resultclass = EnhancedMultiTrajResult
 
+    # little hack to make _restore_state aware of the current time
+    def _initialize_run_one_traj(self, seed, state, tlist, e_ops):
+        self._restore_state_time = tlist[0]
+        return super()._initialize_run_one_traj(seed, state, tlist, e_ops)
+
     # Make use of Integrator's `run` method which might be more efficient
     # than repeated calls to its `integrate` method.
     def _integrate_one_traj(self, seed: np.random.SeedSequence,
@@ -164,8 +169,13 @@ class EnhancedMultiTrajSolver(MultiTrajSolver):
                             ) -> tuple[np.random.SeedSequence, qt.Result]:
         # Note that integrator.run discards first value of tlist
         for t, state in self._integrator.run(tlist):
+            self._restore_state_time = t
             result.add(t, self._restore_state(state, copy=False))
         return seed, result
+    
+    def step(self, t, *, args=None, copy=True):
+        self._restore_state_time = t
+        return super().step(t, args=args, copy=copy)
 
     # Support for mixed initial state
     # Argument types mostly too complicated for type hints

@@ -29,14 +29,14 @@ class PDProcess(ABC):
         pass
 
     @abstractmethod
-    def array_to_state(self, state: NDArray) -> Any:
+    def array_to_state(self, time: float, state: NDArray) -> Any:
         """
         Converts the given state to the external representation.
         """
         pass
 
     @abstractmethod
-    def expect(self, state: NDArray, observable: Any) -> complex:
+    def expect(self, time: float, state: NDArray, observable: Any) -> complex:
         """
         Expectation value of the given observable in the given state.
         """
@@ -252,7 +252,7 @@ class PDPSolver(EnhancedMultiTrajSolver):
         return self.system.initial_state_to_array(state)
     
     def _restore_state(self, data: NDArray, *, copy: bool = False) -> Any:
-        return self.system.array_to_state(data)
+        return self.system.array_to_state(self._restore_state_time, data)
     
     def _run_one_traj(self, seed: np.random.SeedSequence,
                       state: NDArray, tlist: list[float],

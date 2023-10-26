@@ -47,17 +47,17 @@ class PseudoUnraveling(PDProcess):
         state_vec = state.full().flatten()
         return np.block([state_vec, state_vec])
 
-    def array_to_state(self, state: NDArray) -> qt.Qobj:
+    def array_to_state(self, time: float, state: NDArray) -> qt.Qobj:
         half = int(len(state) / 2)
         psi1 = qt.Qobj(state[:half], dims=self.dims)
         psi2 = qt.Qobj(state[half:], dims=self.dims)
         return psi1 * psi2.dag()
 
-    def expect(self, state: NDArray, observable: qt.Qobj) -> complex:
+    def expect(self, time: float, state: NDArray, obs: qt.Qobj) -> complex:
         half = int(len(state) / 2)
         psi1 = state[:half]
         psi2 = state[half:]
-        return np.vdot(psi2, observable.full() @ psi1)
+        return np.vdot(psi2, obs.full() @ psi1)
 
     def jump_rates(self, time: float, state: NDArray) -> list[float]:
         return [self.jump_rate(n, time, state)
@@ -206,29 +206,38 @@ class UnravelingLikeAppendixC4(PDProcess):
         state_vec = state.full().flatten() / np.sqrt(2)
         return np.block([state_vec, state_vec, 2])
 
-    def array_to_state(self, state: NDArray) -> qt.Qobj:
+    def array_to_state(self, time: float, state: NDArray) -> qt.Qobj:
         half = int((len(state) - 1) / 2)
         psi1 = qt.Qobj(state[:half], dims=self.dims)
         psi2 = qt.Qobj(state[half:-1], dims=self.dims)
-        mu = state[-1]
+        mu = state[-1] * np.exp(self._Lambda * time)
         return mu * psi1 * psi2.dag()
 
-    def expect(self, state: NDArray, observable: qt.Qobj) -> complex:
+    def expect(self, time: float, state: NDArray, obs: qt.Qobj) -> complex:
         half = int((len(state) - 1) / 2)
         psi1 = qt.Qobj(state[:half], dims=self.dims)
         psi2 = qt.Qobj(state[half:-1], dims=self.dims)
-        mu = state[-1]
-        return mu * np.vdot(psi2, observable.full() @ psi1)
+        mu = state[-1] * np.exp(self._Lambda * time)
+        return mu * np.vdot(psi2, obs.full() @ psi1)
 
     def jump_rates(self, time: float, state: NDArray) -> list[float]:
+        if state[-1] == 0: # once mu is zero, remaining traj doesn't matter
+            return [0] * len(self._zipped)
+
         return [self.jump_rate(channel, time, state)
                 for channel in range(len(self._zipped))]
 
     def jump_rate(self, channel: int, time: float, state: NDArray) -> float:
+        if state[-1] == 0: # once mu is zero, remaining traj doesn't matter
+            return 0
+
         Gamma, LdL = self._zipped[channel]
         return np.real(Gamma * np.vdot(state[:-1], LdL @ state[:-1]))
 
     def apply_jump(self, time: float, channel: int, state: NDArray) -> None:
+        if state[-1] == 0: # once mu is zero, remaining traj doesn't matter
+            return
+
         factor = np.sqrt(self._Gamma[channel] /
                          self.jump_rate(channel, time, state))
         state[:-1] = factor * self._L_hat[channel] @ state[:-1]
@@ -236,9 +245,15 @@ class UnravelingLikeAppendixC4(PDProcess):
 
     def deterministic_generator(
             self, time: float, state: NDArray, result: NDArray) -> None:
+        if state[-1] == 0: # once mu is zero, remaining traj doesn't matter
+            result[:] = np.zeros_like(result)
+
         alpha = sum(self.jump_rates(time, state)) / 2
         result[:-1] = (-1j * self._H_eff @ state[:-1]) + (alpha * state[:-1])
-        result[-1] = self._Lambda * state[-1]
+        result[-1] = 0
+        # result[-1] = self._Lambda * state[-1]
+        # We keep mu constant during the deterministic evolution and instead
+        # multiply with exp(Lambda * t) in the end
 
     def arguments(self, args: Any) -> None:
         pass

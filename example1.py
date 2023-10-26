@@ -151,10 +151,13 @@ if __name__ == "__main__":
                                       'store_states': False,
                                       'store_final_state': False,
                                       'keep_runs_results': False,
-                                      'progress_bar': 'tqdm'})
+                                      'progress_bar': 'tqdm'}
+                )
 
                 result = solver.run_mixed(
-                    initial_state, TLIST, e_ops=[ex1['Hs']])
+                    initial_state, TLIST,
+                    e_ops=[ex1['Hs'], qt.qeye_like(ex1['Hs'])]
+                )
 
                 qt.qsave(result, f"./result-{i}-{cls.__name__}")
             

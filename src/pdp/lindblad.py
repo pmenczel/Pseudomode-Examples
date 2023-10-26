@@ -32,12 +32,12 @@ class LindbladUnraveling(PDProcess):
     def initial_state_to_array(self, state: qt.Qobj) -> NDArray:
         return state.full().flatten() # note that flatten returns a copy
 
-    def array_to_state(self, state: NDArray) -> qt.Qobj:
+    def array_to_state(self, time: float, state: NDArray) -> qt.Qobj:
         return qt.Qobj(state, dims=self.dims)
 
-    def expect(self, state: NDArray, observable: qt.Qobj) -> complex:
-        qt_state = self.array_to_state(state)
-        return qt.expect(observable, qt_state)
+    def expect(self, time: float, state: NDArray, obs: qt.Qobj) -> complex:
+        qt_state = self.array_to_state(time, state)
+        return qt.expect(obs, qt_state)
     
     def jump_rates(self, time: float, state: NDArray) -> list[float]:
         result = [g * np.vdot(state, LdL @ state)

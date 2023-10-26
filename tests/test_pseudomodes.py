@@ -216,7 +216,7 @@ def test_simple_decay(process_class, rate):
 def test_complex_example(process_class):
     tlist = np.linspace(0, 2.5, 100)
     if process_class == UnravelingLikeAppendixC4:
-        ntraj = 5000
+        ntraj = 10000
     else:
         ntraj = 2500
 
