@@ -3,6 +3,8 @@ import pdp
 import numpy as np
 import qutip as qt
 
+import traceback
+
 
 ##### SYSTEM CONFIGURATION ####################################################
 
@@ -136,18 +138,28 @@ if __name__ == "__main__":
 
     i = 0
     while True:
-        for cls in unravelings:
-            process = cls(ex1['Htot'], ex1['lindblad_ops'], ex1['rates'])
-            initial_state = pdp.NonHermitianIC(
-                ex1['rho0'], ntraj=NTRAJ_PER_RUN)
-            solver = pdp.PDPSolver(
-                process, options={'map': 'parallel', 'num_cpus': NUM_CPUS,
-                                  'max_step': 0.5, 'keep_runs_results': False,
-                                  'store_states': False,
-                                  'store_final_state': False,
-                                  'progress_bar': 'tqdm'}
-            )
+        print(f"Run {i}")
 
-            result = solver.run_mixed(initial_state, TLIST, e_ops=[ex1['Hs']])
+        try:
+            for cls in unravelings:
+                process = cls(ex1['Htot'], ex1['lindblad_ops'], ex1['rates'])
+                initial_state = pdp.NonHermitianIC(
+                    ex1['rho0'], ntraj=NTRAJ_PER_RUN)
+                solver = pdp.PDPSolver(
+                    process, options={'map': 'parallel', 'num_cpus': NUM_CPUS,
+                                      'max_step': 0.5,
+                                      'store_states': False,
+                                      'store_final_state': False,
+                                      'keep_runs_results': False,
+                                      'progress_bar': 'tqdm'})
 
-            qt.qsave(result, f"./result-{i}-{cls.__name__}")
+                result = solver.run_mixed(
+                    initial_state, TLIST, e_ops=[ex1['Hs']])
+
+                qt.qsave(result, f"./result-{i}-{cls.__name__}")
+            
+            print()
+            i += 1
+        except Exception:
+            traceback.print_exc()
+            continue

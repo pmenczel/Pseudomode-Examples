@@ -138,8 +138,13 @@ class EnhancedMultiTrajResult(qt.MultiTrajResult):
         old_final_state = trajectory.final_state
         trajectory.final_state = self._weighted_dm(old_final_state, weight)
         old_edata = trajectory.e_data
-        trajectory.e_data = {key: np.asarray(data) * weight
+        trajectory.e_data = {key: weight * np.asarray(data, dtype=np.complex_)
                              for key, data in old_edata.items()}
+        # We make the values of e_data arrays with a complex data type
+        # Otherwise, we would get an exception in situations where the first
+        # trajectory only contains real numbers (meaning that the
+        # multi-trajectory result gets initialized with float-typed arrays) and
+        # a later trajectory contains complex numbers and cant get added
         
         result = super().add(trajectory_info)
 
