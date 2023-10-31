@@ -1,7 +1,7 @@
 import pytest
 from pdp import (
     PDPSolver, StandardPseudoUnraveling, AlternativePseudoUnraveling,
-    StandardPseudoUnravelingEN, AlternativePseudoUnravelingEN,
+    BreuerUnraveling, StandardPseudoUnravelingEN,
     UnravelingLikeAppendixC4, NonHermitianIC)
 
 import numpy as np
@@ -10,7 +10,7 @@ import qutip as qt
 
 EPSI = 1e-6
 NORMAL_SOLVERS = [StandardPseudoUnraveling, AlternativePseudoUnraveling,
-                  StandardPseudoUnravelingEN, AlternativePseudoUnravelingEN]
+                  BreuerUnraveling, StandardPseudoUnravelingEN]
 ALL_SOLVERS = NORMAL_SOLVERS + [UnravelingLikeAppendixC4]
 
 

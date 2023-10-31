@@ -1,7 +1,7 @@
 __all__ = ['StandardPseudoUnraveling',
            'AlternativePseudoUnraveling',
+           'BreuerUnraveling',
            'StandardPseudoUnravelingEN',
-           'AlternativePseudoUnravelingEN',
            'UnravelingLikeAppendixC4',
            'NonHermitianIC']
 
@@ -127,6 +127,25 @@ class AlternativePseudoUnraveling(PseudoUnraveling):
                 for g, LdL in self._zipped_data]
 
 
+class BreuerUnraveling(PseudoUnraveling):
+    def jump_rate(self, channel, time, state):
+        g = self.rates[channel]
+        L = self._L_data[channel]
+        Lpsi = L @ state
+
+        return np.abs(g * np.vdot(Lpsi, Lpsi) / np.vdot(state, state))
+
+    def jump_rates(self, time, state):
+        result = np.zeros_like(self.rates, dtype=np.float_)
+        norm = np.vdot(state, state)
+
+        for i, (g, L) in enumerate(zip(self.rates, self._L_data)):
+            Lpsi = L @ state
+            result[i] = np.abs(g * np.vdot(Lpsi, Lpsi) / norm)
+
+        return result
+
+
 class _EqualNormUnraveling(PseudoUnraveling):
     def apply_jump(self, time: float, channel: int, state: NDArray) -> None:
         super().apply_jump(time, channel, state)
@@ -158,11 +177,6 @@ class _EqualNormUnraveling(PseudoUnraveling):
 
 class StandardPseudoUnravelingEN(StandardPseudoUnraveling,
                                  _EqualNormUnraveling):
-    pass
-
-
-class AlternativePseudoUnravelingEN(AlternativePseudoUnraveling,
-                                    _EqualNormUnraveling):
     pass
 
 

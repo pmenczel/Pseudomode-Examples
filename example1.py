@@ -130,9 +130,10 @@ if __name__ == "__main__":
     ex1 = setup_example()
 
     unravelings = [
-        pdp.StandardPseudoUnraveling,
-        pdp.AlternativePseudoUnraveling,
-        pdp.UnravelingLikeAppendixC4,
+#        pdp.StandardPseudoUnraveling,
+#        pdp.AlternativePseudoUnraveling,
+        pdp.BreuerUnraveling,
+#        pdp.UnravelingLikeAppendixC4,
     ]
     NTRAJ_PER_RUN = 1000
 
@@ -163,6 +164,9 @@ if __name__ == "__main__":
             
             print()
             i += 1
+
+            if i >= 286:
+                break
         except Exception:
             traceback.print_exc()
             continue
