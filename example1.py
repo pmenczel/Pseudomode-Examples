@@ -163,9 +163,6 @@ if __name__ == "__main__":
                 qt.qsave(result, f"./result-{i}-{cls.__name__}")
 
             i += 1
-
-            if i >= 250:
-                break
         except Exception:
             traceback.print_exc()
             continue
