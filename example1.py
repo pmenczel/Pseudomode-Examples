@@ -103,9 +103,9 @@ def setup_example():
             rho0 = rho0 & qt.thermal_dm(PM_CUTOFF[i], N)
 
         heat_current_ops.append(
-            -1j * W * (HI * create * destroy - create * destroy * HI) -
+            1j * W * (HI * create * destroy - create * destroy * HI) +
             G * (N + 1) * (destroy * HI * create - destroy * create * HI / 2 -
-                           HI * destroy * create / 2) -
+                           HI * destroy * create / 2) +
             G * N * (create * HI * destroy - create * destroy * HI / 2 -
                      HI * create * destroy / 2)
         )
