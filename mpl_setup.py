@@ -1,7 +1,7 @@
 import matplotlib
 
 matplotlib.rcParams['text.usetex'] = True
-matplotlib.rcParams['text.latex.preamble'] = r'\usepackage{lmodern}'
+matplotlib.rcParams['text.latex.preamble'] = r'\usepackage{lmodern}\usepackage{amsmath}'
 matplotlib.rcParams['font.family'] = 'lmodern'
 matplotlib.rcParams['font.size'] = 9
 
