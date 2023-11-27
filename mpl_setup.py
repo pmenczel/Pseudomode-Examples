@@ -15,8 +15,6 @@ matplotlib.rcParams['savefig.transparent'] = True
 
 matplotlib.rcParams['lines.dashed_pattern'] = [3, 3]
 matplotlib.rcParams['lines.dotted_pattern'] = [1, 2]
-matplotlib.rcParams['lines.linewidth'] = 1.2
-matplotlib.rcParams['axes.linewidth'] = .75
 
 matplotlib.rcParams['legend.frameon'] = False
 matplotlib.rcParams['legend.borderpad'] = 0.25
