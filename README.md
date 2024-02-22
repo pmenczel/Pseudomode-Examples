@@ -1,6 +1,6 @@
 # Non-Hermitian Pseudomodes for Strongly Coupled Open Quantum Systems:<br> Unravelings, Correlations and Thermodynamics
 
-This repository contains the code used to generate the figures in arXiv:XXX.
+This repository contains the code used to generate the figures in [arXiv:2401.11830 \[quant-ph\]](https://arxiv.org/abs/2401.11830).
 The code is written in Python using QuTiP, the [Quantum Toolbox in Python](https://github.com/qutip/qutip/).
 
 ## Organization
@@ -29,10 +29,10 @@ These files are not included here due to space limitations.
 Matplotlib configuration and color definitions.
 
 `example1.ipynb` —
-Performs short calculations with `qutip.mesolve` and `qutip.HEOMSolver`, and generates Figures 1, 2, and 5 in the paper.
+Performs short calculations with `qutip.mesolve` and `qutip.HEOMSolver`, and generates Figures 2, 3, and 6 in the paper.
 
 `example1.ipynb` —
-Performs short calculations with `qutip.mesolve` and `qutip.HEOMSolver`, and generates Figures 3 and 4 in the paper.
+Performs short calculations with `qutip.mesolve` and `qutip.HEOMSolver`, and generates Figures 4 and 5 in the paper.
 The calculation results are stored in the `example2-{W}.qu` files.
 If such a file exists, the calculation result is automatically loaded from the file instead.
 
